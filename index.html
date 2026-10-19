@@ -356,9 +356,8 @@ const gb = b => (b / 1e9).toFixed(2) + " GB";
 /* ------------------------- soporte navegador ------------------------- */
 (function () {
   const falta = [];
-  if (!("AudioDecoder" in window)) falta.push("buscar momentos automáticamente");
   if (!("MediaRecorder" in window) || !HTMLCanvasElement.prototype.captureStream) falta.push("descargar clips");
-  if (falta.length) { const a = $("#aviso-nav"); a.hidden = false; a.textContent = `Tu navegador no puede ${falta.join(" ni ")}. Usa Google Chrome o Microsoft Edge en computador.`; }
+  if (falta.length) { const a = $("#aviso-nav"); a.hidden = false; a.textContent = `Tu navegador no puede ${falta.join(" ni ")}. Usa Google Chrome, Microsoft Edge u Opera GX en computador.`; }
 })();
 
 /* ===================== dibujo del clip (9:16) ===================== */
@@ -450,6 +449,7 @@ function pistaAudio(dv) {
     if (trak.t !== "trak") continue;
     const mdia = hija(dv, trak, "mdia"); if (!mdia) continue;
     const hdlr = hija(dv, mdia, "hdlr"); if (!hdlr || tipo(dv, hdlr.a + 8) !== "soun") continue;
+    const tkhd = hija(dv, trak, "tkhd"), idPista = dv.getUint32(tkhd.a + (dv.getUint8(tkhd.a) === 1 ? 20 : 12));
     const mdhd = hija(dv, mdia, "mdhd"), v = dv.getUint8(mdhd.a);
     const escala = v === 1 ? dv.getUint32(mdhd.a + 20) : dv.getUint32(mdhd.a + 12);
     const stbl = hija(dv, hija(dv, mdia, "minf"), "stbl");
@@ -500,17 +500,65 @@ function pistaAudio(dv) {
     }
     const stts = tabla("stts"), ne = dv.getUint32(stts.a + 4), ts = new Float64Array(n); let t = 0, i = 0;
     for (let e = 0; e < ne; e++) { const c = dv.getUint32(stts.a + 8 + 8 * e), d = dv.getUint32(stts.a + 12 + 8 * e); for (let k = 0; k < c && i < n; k++) { ts[i++] = t; t += d; } }
-    return { config, escala, n, tams, offs, ts };
+    let trex = { dur: 0, tam: 0 };
+    const mvex = hija(dv, moov, "mvex");
+    if (mvex) for (const x of cajas(dv, mvex.a, mvex.b)) if (x.t === "trex" && dv.getUint32(x.a + 4) === idPista) trex = { dur: dv.getUint32(x.a + 12), tam: dv.getUint32(x.a + 16) };
+    return { config, escala, n, tams, offs, ts, idPista, trex };
   }
   throw new Error("el video no tiene audio");
+}
+
+/** MP4 fragmentado (descargas de Kick/Twitch): las muestras están en cajas moof, no en el moov */
+async function leerFragmentos(f, A, progreso) {
+  const offs = [], tams = [], ts = []; let p = 0, tSig = 0, n = 0, cajasLeidas = 0; A.frag = true;
+  while (p + 8 <= f.size) {
+    const h = await leer(f, p, 16);
+    let tam = h.getUint32(0); const t = tipo(h, 4);
+    if (tam === 1) tam = Number(h.getBigUint64(8)); else if (tam === 0) tam = f.size - p;
+    if (tam < 8) break;
+    if (t === "moof") {
+      const dv = await leer(f, p, tam);
+      for (const traf of cajas(dv, 8, tam)) {
+        if (traf.t !== "traf") continue;
+        const tfhd = hija(dv, traf, "tfhd"); if (!tfhd) continue;
+        const fl = dv.getUint32(tfhd.a) & 0xffffff; if (dv.getUint32(tfhd.a + 4) !== A.idPista) continue;
+        let q = tfhd.a + 8, base = p, dDur = A.trex.dur, dTam = A.trex.tam;
+        if (fl & 1) { base = Number(dv.getBigUint64(q)); q += 8; }
+        if (fl & 2) q += 4; if (fl & 8) { dDur = dv.getUint32(q); q += 4; } if (fl & 0x10) { dTam = dv.getUint32(q); q += 4; }
+        const tfdt = hija(dv, traf, "tfdt");
+        if (tfdt) tSig = dv.getUint8(tfdt.a) === 1 ? Number(dv.getBigUint64(tfdt.a + 4)) : dv.getUint32(tfdt.a + 4);
+        let fin = base;
+        for (const trun of cajas(dv, traf.a, traf.b)) {
+          if (trun.t !== "trun") continue;
+          const rf = dv.getUint32(trun.a) & 0xffffff, cnt = dv.getUint32(trun.a + 4); let r = trun.a + 8;
+          let o = fin; if (rf & 1) { o = base + dv.getInt32(r); r += 4; } if (rf & 4) r += 4;
+          for (let k = 0; k < cnt; k++) {
+            let d = dDur, z = dTam;
+            if (rf & 0x100) { d = dv.getUint32(r); r += 4; } if (rf & 0x200) { z = dv.getUint32(r); r += 4; }
+            if (rf & 0x400) r += 4; if (rf & 0x800) r += 4;
+            offs.push(o); tams.push(z); ts.push(tSig); o += z; tSig += d; n++;
+          }
+          fin = o;
+        }
+      }
+    }
+    p += tam;
+    if (++cajasLeidas % 40 === 0) progreso(p / f.size);
+  }
+  A.offs = Float64Array.from(offs); A.tams = Uint32Array.from(tams); A.ts = Float64Array.from(ts); A.n = n;
 }
 
 /** dB RMS por segundo, leyendo solo el audio y decodificándolo con WebCodecs */
 async function dbPorSegundo(f, dur, progreso, cancelado) {
   const dv = await buscarMoov(f);
   const A = pistaAudio(dv);
-  const sop = await AudioDecoder.isConfigSupported(A.config).catch(() => ({ supported: false }));
-  if (!sop.supported) throw new Error(`tu navegador no decodifica este audio (${A.config.codec})`);
+  if (!A.n) await leerFragmentos(f, A, v => progreso(v * 0.15));
+  if (!A.n) throw new Error("no encontré el audio dentro del video");
+  const sop = "AudioDecoder" in window ? await AudioDecoder.isConfigSupported(A.config).catch(() => ({ supported: false })) : { supported: false };
+  if (!sop.supported) {
+    if (A.config.codec.startsWith("mp4a.40.")) return dbPorSegundoADTS(f, dur, A, progreso, cancelado);   // Opera GX, Firefox…
+    throw new Error(`tu navegador no decodifica este audio (${A.config.codec})`);
+  }
   const segs = Math.ceil(dur) + 2, suma = new Float64Array(segs), cuenta = new Float64Array(segs);
   let error = null;
   const dec = new AudioDecoder({
@@ -546,10 +594,45 @@ async function dbPorSegundo(f, dur, progreso, cancelado) {
     }
     i = j;
     while (dec.decodeQueueSize > 400) await new Promise(r => setTimeout(r, 5));
-    progreso(i / A.n);
+    progreso(A.frag ? 0.15 + 0.85 * i / A.n : i / A.n);
   }
   await dec.flush(); dec.close();
   if (error) throw error;
+  const db = new Float32Array(Math.ceil(dur));
+  for (let s = 0; s < db.length; s++) db[s] = cuenta[s] ? 10 * Math.log10(suma[s] / cuenta[s] + 1e-18) : -90;
+  return db;
+}
+
+/** Plan B (Opera GX y otros): envuelve el AAC en ADTS y lo decodifica con decodeAudioData por tandas */
+function cabeceraADTS(asc) {
+  const aot = asc[0] >> 3, sfi = ((asc[0] & 7) << 1) | (asc[1] >> 7), ch = (asc[1] >> 3) & 15;
+  if (aot < 1 || aot > 4 || sfi > 12) throw new Error("este audio AAC no se puede leer en este navegador");
+  return len => new Uint8Array([0xFF, 0xF1, ((aot - 1) << 6) | (sfi << 2) | (ch >> 2), ((ch & 3) << 6) | (len >> 11), (len >> 3) & 0xFF, ((len & 7) << 5) | 0x1F, 0xFC]);
+}
+async function dbPorSegundoADTS(f, dur, A, progreso, cancelado) {
+  const cab = cabeceraADTS(A.config.description), SR = 8000, TANDA = 120;   // segundos de audio por tanda
+  const segs = Math.ceil(dur) + 2, suma = new Float64Array(segs), cuenta = new Float64Array(segs);
+  let i = 0;
+  while (i < A.n) {
+    if (cancelado()) return null;
+    const t0 = A.ts[i] / A.escala; let j = i, bytes = 0;
+    while (j < A.n && A.ts[j] / A.escala < t0 + TANDA) { bytes += A.tams[j] + 7; j++; }
+    // leer del archivo en ventanas contiguas y armar el flujo ADTS
+    const out = new Uint8Array(bytes); let w = 0, k = i;
+    while (k < j) {
+      const a = A.offs[k]; let m = k;
+      while (m < j && A.offs[m] + A.tams[m] - a <= (16 << 20) && A.offs[m] >= a) m++;
+      if (m === k) m = k + 1;
+      const buf = new Uint8Array(await f.slice(a, A.offs[m - 1] + A.tams[m - 1]).arrayBuffer());
+      for (let q = k; q < m; q++) { out.set(cab(A.tams[q] + 7), w); w += 7; out.set(buf.subarray(A.offs[q] - a, A.offs[q] - a + A.tams[q]), w); w += A.tams[q]; }
+      k = m;
+    }
+    const oc = new OfflineAudioContext(1, 1, SR);
+    const ab = await new Promise((ok, mal) => { const pr = oc.decodeAudioData(out.buffer, ok, mal); if (pr && pr.catch) pr.catch(mal); });
+    const d = ab.getChannelData(0);
+    for (let x = 0; x < d.length; x++) { const sg = Math.floor(t0 + x / SR); if (sg < segs) { suma[sg] += d[x] * d[x]; cuenta[sg]++; } }
+    i = j; progreso(A.frag ? 0.15 + 0.85 * i / A.n : i / A.n);
+  }
   const db = new Float32Array(Math.ceil(dur));
   for (let s = 0; s < db.length; s++) db[s] = cuenta[s] ? 10 * Math.log10(suma[s] / cuenta[s] + 1e-18) : -90;
   return db;
@@ -687,7 +770,6 @@ let cancelarAnalisis = false;
 $("#buscar").onclick = async () => {
   if (S.ocupado === "analisis") { cancelarAnalisis = true; return; }
   if (!S.file || !S.dur) return avisar("Primero elige tu VOD (paso 01).");
-  if (!("AudioDecoder" in window)) return avisar("Para buscar momentos usa Chrome o Edge.");
   if (S.ocupado) return avisar("Espera a que termine la descarga.");
   const n = Math.max(1, Math.min(30, parseInt($("#cuantos").value) || 10));
   S.ocupado = "analisis"; cancelarAnalisis = false;
@@ -705,7 +787,9 @@ $("#buscar").onclick = async () => {
     const manuales = S.clips.filter(c => c.manual);
     S.clips = ws.map(([a, b, p]) => ({ id: ++S.nClip, ini: Math.round(a), fin: Math.round(b), pico: p, fuerza: sc[p], texto: "", manual: false }));
     S.clips.push(...manuales); S.clips.sort((x, y) => x.ini - y.ini);
-    $("#analisis-txt").textContent = `Encontré ${ws.length} momentos en ${Math.round((performance.now() - t0) / 1000)} s. Míralos y descarga los que te gusten.`;
+    $("#analisis-txt").textContent = ws.length
+      ? `Encontré ${ws.length} momentos en ${Math.round((performance.now() - t0) / 1000)} s. Míralos y descarga los que te gusten.`
+      : "No encontré momentos con suficiente hype en el audio. Prueba el modo manual.";
     pintarLista(); seleccionar(0); miniaturas();
   } catch (e) {
     console.error(e);
