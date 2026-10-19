@@ -111,6 +111,26 @@
   .clip .txt{color:var(--amarillo)}
   .clip .est{font-family:var(--fm);font-size:11px;font-weight:800;margin-top:6px}
   .clip .acc{display:flex;flex-direction:column;gap:8px}
+  .clip .rank{font-family:var(--ft);color:var(--amarillo);margin-right:6px}
+
+  /* potencial */
+  .ia-lab{font-size:14px} .ia-lab small{color:var(--suave);font-family:var(--fm);font-size:11px;display:block;margin-top:2px}
+  .ia-estado{border:var(--b);background:var(--card);padding:10px 12px;margin:0 0 16px;box-shadow:4px 4px 0 var(--violeta);font-family:var(--fm);font-size:12px;font-weight:700}
+  .ia-estado .barra{height:18px;margin-top:8px}
+  .badge{display:inline-flex;align-items:center;gap:6px;font-family:var(--fm);font-weight:800;font-size:12px;padding:2px 8px;border:2px solid var(--linea);margin-top:6px}
+  .badge.alto{background:var(--amarillo);color:var(--negro)} .badge.medio{background:var(--violeta);color:#fff} .badge.bajo{background:var(--card);color:var(--suave)}
+  .badge.pend{background:transparent;color:var(--suave);border-style:dashed}
+  .pot{margin-top:18px;border:var(--b);padding:12px;background:var(--card)}
+  .pot:empty{display:none}
+  .pot .top{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+  .pot .num-g{font-family:var(--ft);font-size:34px;line-height:1;color:var(--amarillo)}
+  .pot .et{font-family:var(--fm);font-weight:800;font-size:12px}
+  .pot .bar{display:grid;grid-template-columns:92px 1fr 30px;gap:8px;align-items:center;font-family:var(--fm);font-size:11px;font-weight:700;color:var(--suave);margin-top:7px}
+  .pot .bar i{display:block;height:9px;background:var(--card2);border:1px solid var(--linea);position:relative}
+  .pot .bar i b{position:absolute;inset:0 auto 0 0;background:var(--amarillo)}
+  .pot .voz{font-size:13px;line-height:1.45;margin:12px 0 0;color:var(--txt);max-height:92px;overflow:auto;border-top:2px solid var(--gris);padding-top:10px}
+  .pot .voz em{color:var(--amarillo);font-style:normal;font-weight:700}
+  .pot .sug{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
 
   /* marca de agua */
   .grid-m{display:grid;grid-template-columns:auto minmax(0,1fr);gap:40px;align-items:start}
@@ -201,6 +221,10 @@
               <span class="num" data-min="1" data-max="30"><input id="cuantos" value="10" inputmode="numeric" aria-label="Cuántos momentos"></span>
             </div>
             <p class="ayuda">Escucha el audio del VOD y busca los momentos con más hype. Clips de 30 s a 1:30. <b>Nada se descarga hasta que tú quieras.</b></p>
+            <div class="filas" style="margin-top:14px;gap:10px">
+              <button class="check on" id="ia-on" aria-pressed="true" aria-label="Analizar la voz con IA">✓</button>
+              <span class="ia-lab">🧠 Analizar también la voz con IA <small>(Whisper, gratis · la 1ª vez descarga ~80 MB)</small></span>
+            </div>
             <div style="margin-top:16px"><button class="btn prim" id="buscar">BUSCAR MOMENTOS →</button></div>
             <div id="analisis" hidden>
               <div class="barra" id="barra-a"><i></i><span>0%</span></div>
@@ -238,6 +262,7 @@
                 <span>FINAL · <b class="t" id="t-fin"></b></span>
                 <span class="filas"><button class="btn chico" data-aj="fin,-5">−5s</button><button class="btn chico" data-aj="fin,-1">−1s</button><button class="btn chico" data-aj="fin,1">+1s</button><button class="btn chico" data-aj="fin,5">+5s</button></span>
               </div>
+              <div class="pot" id="pot"></div>
               <p class="rot am" style="margin:16px 0 8px">Texto del clip</p>
               <label class="campo"><input id="p-texto" maxlength="80" placeholder="(sin texto)" aria-label="Texto del clip"></label>
               <div class="filas" style="margin-top:18px">
@@ -250,10 +275,15 @@
 
         <div class="filas entre" style="margin:30px 0 10px">
           <p class="rot" style="margin:0" id="lista-tit">Tus clips</p>
-          <button class="btn chico" id="bajar-todos" disabled>⬇ DESCARGAR TODOS</button>
+          <div class="filas" style="gap:10px">
+            <button class="btn chico" id="orden" title="Cambiar el orden">ORDEN: POTENCIAL</button>
+            <button class="btn chico vio" id="ia-btn" disabled>🧠 VOZ CON IA</button>
+            <button class="btn chico" id="bajar-todos" disabled>⬇ DESCARGAR TODOS</button>
+          </div>
         </div>
+        <div class="ia-estado" id="ia-estado" hidden><span id="ia-txt"></span><div class="barra" id="barra-ia"><i></i><span>0%</span></div></div>
         <div class="caja lista" id="lista"><p class="vacio">Aún no hay clips.</p></div>
-        <p class="ayuda">Al descargar, el clip se graba en tiempo real (un clip de 30 s tarda unos 30 s). <b>No cambies de pestaña mientras se descarga.</b></p>
+        <p class="ayuda" id="ayuda-bajar">Los clips se procesan más rápido que el tiempo real y <b>siguen aunque cambies de pestaña</b>. Solo no cierres esta pestaña hasta que terminen.</p>
       </div>
     </div>
   </section>
@@ -337,7 +367,7 @@ const DEF = { usuario: "simplemente_timi", logos: ["twitch", "kick"], opacidad: 
 /* ------------------------------ estado ------------------------------ */
 let CFG = (() => { try { return Object.assign({}, DEF, JSON.parse(localStorage.getItem("clipsTimi") || "{}")); } catch { return { ...DEF }; } })();
 const guardarCfg = () => { try { localStorage.setItem("clipsTimi", JSON.stringify(CFG)); } catch {} };
-const S = { file: null, url: null, dur: 0, vw: 1280, vh: 720, clips: [], sel: -1, modo: "auto", ocupado: false, nClip: 0 };
+const S = { file: null, url: null, dur: 0, vw: 1280, vh: 720, clips: [], sel: -1, modo: "auto", ocupado: false, nClip: 0, A: null, sc: null, orden: "potencial", ia: true };
 const imgs = {};
 function logoImg(id) {
   const src = LOGOS_BASE[id] || CFG.propios[id];
@@ -411,7 +441,7 @@ function fondoDosTonos(ctx) {
 /** Dibuja el clip completo en coordenadas 1080x1920 */
 function componer(ctx, video, texto) {
   ctx.fillStyle = "#000"; ctx.fillRect(0, 0, W, H);
-  if (video && video.readyState >= 2) {
+  if (video && (video.readyState === undefined || video.readyState >= 2)) {
     cubrir(ctx, video, rectPx(CFG.cam), 0, 0, W, TOP);
     cubrir(ctx, video, rectPx(CFG.game || gameAuto()), 0, TOP, W, H - TOP);
   } else fondoDosTonos(ctx);
@@ -553,6 +583,7 @@ async function dbPorSegundo(f, dur, progreso, cancelado) {
   const dv = await buscarMoov(f);
   const A = pistaAudio(dv);
   if (!A.n) await leerFragmentos(f, A, v => progreso(v * 0.15));
+  if (f === S.file) S.A = A;
   if (!A.n) throw new Error("no encontré el audio dentro del video");
   const sop = "AudioDecoder" in window ? await AudioDecoder.isConfigSupported(A.config).catch(() => ({ supported: false })) : { supported: false };
   if (!sop.supported) {
@@ -694,7 +725,7 @@ function cargarArchivo(f) {
   if (S.ocupado) return avisar("Espera a que termine lo que se está haciendo.");
   if (!/\.(mp4|m4v|mov)$/i.test(f.name) && !/mp4|quicktime/.test(f.type)) avisar("Usa un archivo .mp4. Si es .mkv, conviértelo en OBS: Archivo → Remuxear grabaciones.");
   if (S.url) URL.revokeObjectURL(S.url);
-  S.file = f; S.url = URL.createObjectURL(f); S.clips = []; S.sel = -1; S.nClip = 0;
+  S.file = f; S.url = URL.createObjectURL(f); S.clips = []; S.sel = -1; S.nClip = 0; S.A = null; S.sc = null; pararIA();
   for (const v of [vPrev, vThumb, vExp]) { v.src = S.url; v.load(); }
   $("#drop-nombre").textContent = f.name; $("#drop-info").textContent = gb(f.size) + " · leyendo…";
   vThumb.onloadedmetadata = () => {
@@ -780,17 +811,18 @@ $("#buscar").onclick = async () => {
   try {
     const db = await dbPorSegundo(S.file, S.dur, v => barra(v * 0.97), () => cancelarAnalisis);
     if (!db) { $("#analisis-txt").textContent = "Cancelado."; return; }
-    const sc = puntaje(db);
+    const sc = puntaje(db); S.sc = sc;
     let ws = picos(sc, n, 60).map(p => ventana(sc, p, S.dur));
     ws = sinSolapes(ws, sc);
     barra(1);
     const manuales = S.clips.filter(c => c.manual);
     S.clips = ws.map(([a, b, p]) => ({ id: ++S.nClip, ini: Math.round(a), fin: Math.round(b), pico: p, fuerza: sc[p], texto: "", manual: false }));
-    S.clips.push(...manuales); S.clips.sort((x, y) => x.ini - y.ini);
+    S.clips.push(...manuales); ordenar();
     $("#analisis-txt").textContent = ws.length
       ? `Encontré ${ws.length} momentos en ${Math.round((performance.now() - t0) / 1000)} s. Míralos y descarga los que te gusten.`
       : "No encontré momentos con suficiente hype en el audio. Prueba el modo manual.";
     pintarLista(); seleccionar(0); miniaturas();
+    if (S.ia && S.clips.length) setTimeout(analizarVoz, 300);
   } catch (e) {
     console.error(e);
     $("#analisis-txt").textContent = "No pude leer el audio: " + e.message + ". Si tu VOD es .mkv, conviértelo a .mp4 en OBS (Archivo → Remuxear grabaciones).";
@@ -826,7 +858,7 @@ $("#anadir").onclick = () => {
   if (ini >= S.dur) return avisar(`El VOD dura ${hms(S.dur)}; el inicio está fuera.`);
   fin = Math.min(fin, Math.floor(S.dur));
   const c = { id: ++S.nClip, ini, fin, texto: $("#texto-man").value.trim(), manual: true };
-  S.clips.push(c); S.clips.sort((x, y) => x.ini - y.ini);
+  S.clips.push(c); ordenar();
   pintarLista(); seleccionar(S.clips.indexOf(c)); miniaturas(); avisar("Clip añadido ✓", true);
 };
 
@@ -838,18 +870,20 @@ function nombreClip(c) {
 function pintarLista() {
   const l = $("#lista");
   $("#lista-tit").textContent = S.clips.length ? `Tus clips (${S.clips.length})` : "Tus clips";
-  $("#bajar-todos").disabled = !S.clips.length;
+  $("#bajar-todos").disabled = !S.clips.length; $("#ia-btn").disabled = !S.clips.length;
   if (!S.clips.length) { l.innerHTML = '<p class="vacio">Aún no hay clips.</p>'; return; }
   l.innerHTML = "";
   S.clips.forEach((c, i) => {
     const d = document.createElement("div"); d.className = "clip" + (i === S.sel ? " sel" : "");
     d.innerHTML = `<img alt="" ${c.mini ? `src="${c.mini}"` : ""}><div><b></b><small></small><div class="est"></div></div>
       <div class="acc"><button class="btn chico prim ver">▶ VER</button><button class="btn chico baj">⬇</button></div>`;
-    d.querySelector("b").textContent = `${c.manual ? "MANUAL" : "CLIP " + String(i + 1).padStart(2, "0")} · ${hms(c.ini)}`;
-    d.querySelector("small").innerHTML = `${c.fin - c.ini} s` + (c.texto ? ` · <span class="txt"></span>` : "") + (c.fuerza != null ? ` · hype ${Math.round(c.fuerza * 100)}%` : "");
+    d.querySelector("b").innerHTML = (c.rank ? `<span class="rank">#${c.rank}</span>` : "") + `<span class="nm"></span>`;
+    d.querySelector(".nm").textContent = `${c.manual ? "MANUAL" : "CLIP"} · ${hms(c.ini)}`;
+    d.querySelector("small").innerHTML = `${c.fin - c.ini} s` + (c.texto ? ` · <span class="txt"></span>` : "") + `<br>${insignia(c)}`;
     if (c.texto) d.querySelector(".txt").textContent = `"${c.texto}"`;
     const est = d.querySelector(".est");
-    if (c.prog != null) { est.textContent = `GRABANDO… ${Math.round(c.prog * 100)}%`; est.style.color = "var(--amarillo)"; }
+    if (c.prog != null) { est.textContent = c.prog < 0 ? "EN COLA…" : `PROCESANDO… ${Math.round(c.prog * 100)}%`; est.style.color = "var(--amarillo)"; }
+    else if (c.vozEstado === "escuchando") { est.textContent = "🧠 ESCUCHANDO…"; est.style.color = "var(--violeta)"; }
     else if (c.blob) { est.textContent = "✓ DESCARGADO"; est.style.color = "var(--verde)"; }
     d.onclick = e => { if (!e.target.closest(".baj")) seleccionar(i, !!e.target.closest(".ver")); };
     d.querySelector(".baj").onclick = () => descargar(c);
@@ -877,7 +911,8 @@ const clipSel = () => S.clips[S.sel];
 function dibujarPrev() { const c = clipSel(); componer(pctx, c ? vPrev : null, c ? c.texto : ""); }
 function pintarCtrl() {
   const c = clipSel(); $("#ctrl-vacio").hidden = !!c; $("#ctrl-si").hidden = !c; if (!c) return;
-  $("#p-titulo").textContent = `${c.manual ? "Clip manual" : "Clip " + String(S.sel + 1).padStart(2, "0")}`;
+  $("#p-titulo").textContent = `${c.rank ? "#" + c.rank + " · " : ""}${c.manual ? "Clip manual" : "Clip"}`;
+  pintarPotencial(c);
   $("#p-meta").textContent = `${hms(c.ini)} → ${hms(c.fin)} · ${c.fin - c.ini} s`;
   $("#t-ini").textContent = hms(c.ini); $("#t-fin").textContent = hms(c.fin);
   if (document.activeElement !== $("#p-texto")) $("#p-texto").value = c.texto || "";
@@ -909,12 +944,220 @@ $("#scrub").oninput = async e => { const c = clipSel(); if (!c) return; await ir
 $$("[data-aj]").forEach(b => b.onclick = async () => {
   const c = clipSel(); if (!c) return; const [k, d] = b.dataset.aj.split(","); const dv = +d;
   if (k === "ini") c.ini = Math.max(0, Math.min(c.fin - 3, c.ini + dv)); else c.fin = Math.min(Math.floor(S.dur), Math.max(c.ini + 3, c.fin + dv));
-  c.blob = null; c.mini = null; pintarCtrl(); pintarLista(); miniaturas();
+  c.blob = null; c.mini = null; calcularTodos(); pintarCtrl(); pintarLista(); miniaturas();
   await irA(vPrev, k === "ini" ? c.ini : Math.max(c.ini, c.fin - 3)); dibujarPrev(); actualizarTiempo();
 });
 $("#p-texto").addEventListener("input", e => { const c = clipSel(); if (!c) return; c.texto = e.target.value; c.blob = null; c.mini = null; dibujarPrev(); clearTimeout(e.target._t); e.target._t = setTimeout(() => { pintarLista(); miniaturas(); }, 500); });
-$("#quitar").onclick = () => { const c = clipSel(); if (!c || c.prog != null) return; S.clips.splice(S.sel, 1); seleccionar(Math.min(S.sel, S.clips.length - 1)); };
+$("#quitar").onclick = () => { const c = clipSel(); if (!c || c.prog != null) return; S.clips.splice(S.sel, 1); calcularTodos(); seleccionar(Math.min(S.sel, S.clips.length - 1)); };
 $("#bajar").onclick = () => { const c = clipSel(); if (c) descargar(c); };
+
+/* ======================== ranking de potencial ======================== */
+const sinTildes = t => t.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+const CLAVES = [/no puede ser/g, /\bque (paso|fue|hice|haces|es eso)\b/g, /\bdios\b/g, /\bno+o\b/g, /\bvamo+s\b/g, /\bincreible\b/g, /\bbrutal\b/g, /\bloco\b|\blocura\b/g,
+  /\bmira\b/g, /\bayuda\b/g, /\bgg\b/g, /\bwtf\b/g, /\bpenta(kill)?\b/g, /\bquadra\b|\bcuadra\b/g, /\btriple\b/g, /\bdoble\b/g, /\bme mat(o|aron)\b/g,
+  /\blo mate\b/g, /\brob(o|aron)\b/g, /\ben serio\b/g, /\bimposible\b/g, /\bbro\b|\bhermano\b/g, /\bque (bestia|locura|rico)\b/g, /\bepa+\b/g, /\buf+\b/g, /\baa+h+\b/g, /\bclutch\b/g, /\bbuenisim[oa]\b/g];
+const RUIDO_WHISPER = /subt[ií]tulos?( realizados)? por la comunidad de amara\.org|amara\.org|suscr[ií]bete( al canal)?|gracias por ver( el video)?|¡?gracias\.?$/gi;
+function analizarTexto(texto, chunks, c) {
+  const limpio = (texto || "").replace(RUIDO_WHISPER, "").trim(), t = sinTildes(limpio);
+  const hits = CLAVES.reduce((n, re) => n + (t.match(re) || []).length, 0);
+  const risas = (t.match(/\bja(ja)+|\bjaj|\bxd+\b/g) || []).length;
+  const pal = t.split(/\s+/).filter(Boolean).length, rate = pal / Math.max(1, c.fin - c.ini);
+  let v = Math.min(1, 0.22 * hits + 0.18 * risas) * 0.7 + (rate > 1.2 ? 0.3 : rate > 0.5 ? 0.15 : 0);
+  if (pal < 3) v = Math.min(v, 0.15);
+  // frase sugerida: el trozo con más "hype" cerca del pico
+  let frase = "";
+  const pico = (c.pico != null ? c.pico : (c.ini + c.fin) / 2) - c.vozIni;
+  const trozos = (chunks || []).map(k => ({ txt: (k.text || "").replace(RUIDO_WHISPER, "").trim(), a: k.timestamp ? k.timestamp[0] : 0, b: k.timestamp ? (k.timestamp[1] ?? k.timestamp[0]) : 0 })).filter(k => k.txt);
+  if (trozos.length) {
+    const puntos = k => { const tt = sinTildes(k.txt); return CLAVES.reduce((n, re) => n + (tt.match(re) || []).length, 0) * 2 + ((tt.match(/\bja(ja)+/g) || []).length) - Math.abs(((k.a + k.b) / 2) - pico) / 10; };
+    const mejor = trozos.reduce((m, k) => puntos(k) > puntos(m) ? k : m, trozos[0]);
+    frase = mejor.txt.replace(/[^\p{L}\p{N}\s¿?¡!]/gu, "").split(/\s+/).filter(Boolean).slice(0, 6).join(" ").toUpperCase();
+  }
+  return { texto: limpio, puntaje: v, hits, risas, frase };
+}
+function potencial(c) {
+  const p = {}; const sc = S.sc;
+  if (sc) {
+    const a = Math.max(0, Math.floor(c.ini)), b = Math.min(sc.length, Math.ceil(c.fin)), seg = Array.from(sc.slice(a, b));
+    const ord = [...seg].sort((x, y) => y - x), pk = ord[0] || 0, t5 = ord.slice(0, 5);
+    p.intensidad = 0.6 * pk + 0.4 * (t5.reduce((s, v) => s + v, 0) / Math.max(1, t5.length));
+    const iP = pk > 0 ? seg.findIndex(v => v >= 0.5 * pk) : -1;
+    p.arranque = iP < 0 ? 0.3 : 1 - Math.min(1, Math.max(0, iP - 4) / 16); c.iPico = iP;
+    p.ritmo = Math.min(1, 2.5 * seg.filter(v => v >= 0.35).length / Math.max(1, seg.length));
+  }
+  const d = c.fin - c.ini;
+  p.duracion = d < 12 ? 0.7 : d <= 35 ? 1 : d <= 60 ? 1 - 0.4 * (d - 35) / 25 : Math.max(0.35, 0.6 - 0.25 * Math.min(1, (d - 60) / 30));
+  if (c.voz) p.voz = c.voz.puntaje;
+  const pesos = { intensidad: .35, arranque: .15, ritmo: .15, duracion: .15, voz: .20 };
+  let tot = 0, w = 0; for (const k in p) { tot += pesos[k] * p[k]; w += pesos[k]; }
+  if (!sc) return { total: null, partes: p };
+  return { total: Math.round(100 * tot / w), partes: p };
+}
+function calcularTodos() {
+  S.clips.forEach(c => c.pot = potencial(c));
+  [...S.clips].filter(c => c.pot.total != null).sort((a, b) => b.pot.total - a.pot.total).forEach((c, i) => c.rank = i + 1);
+}
+function ordenar() {
+  const sel = clipSel(); calcularTodos();
+  if (S.orden === "potencial") S.clips.sort((a, b) => ((b.pot.total ?? -1) - (a.pot.total ?? -1)) || a.ini - b.ini);
+  else S.clips.sort((a, b) => a.ini - b.ini);
+  if (sel) S.sel = S.clips.indexOf(sel);
+}
+const nivel = t => t >= 70 ? ["alto", "🔥 ALTO"] : t >= 45 ? ["medio", "MEDIO"] : ["bajo", "BAJO"];
+function insignia(c) {
+  if (!c.pot || c.pot.total == null) return `<span class="badge pend">POTENCIAL: BUSCA MOMENTOS</span>`;
+  const [k, et] = nivel(c.pot.total);
+  return `<span class="badge ${k}">${c.pot.total} · ${et}${c.voz ? " · 🧠" : ""}</span>`;
+}
+const NOMBRES = { intensidad: "Intensidad", arranque: "Arranque", ritmo: "Ritmo", duracion: "Duración", voz: "Voz (IA)" };
+function pintarPotencial(c) {
+  const box = $("#pot"); const p = c.pot || potencial(c);
+  if (p.total == null) { box.innerHTML = `<p class="et" style="margin:0;color:var(--suave)">Busca momentos (paso 03) para calcular el potencial de este clip.</p>`; return; }
+  const [k, et] = nivel(p.total);
+  let h = `<div class="top"><span class="num-g">${p.total}</span><span class="badge ${k}" style="margin:0">${et}</span><span class="et" style="color:var(--suave)">POTENCIAL${c.rank ? " · #" + c.rank + " de " + S.clips.filter(x => x.pot && x.pot.total != null).length : ""}</span></div>`;
+  for (const n of ["intensidad", "arranque", "ritmo", "duracion", "voz"]) {
+    if (p.partes[n] == null) { if (n === "voz") h += `<div class="bar"><span>${NOMBRES[n]}</span><span style="font-size:11px">${c.vozEstado === "escuchando" ? "escuchando…" : c.vozEstado === "error" ? "no se pudo" : "sin analizar"}</span><span></span></div>`; continue; }
+    const v = Math.round(p.partes[n] * 100);
+    h += `<div class="bar"><span>${NOMBRES[n]}</span><i><b style="width:${v}%"></b></i><span>${v}</span></div>`;
+  }
+  if (c.voz && c.voz.texto) h += `<p class="voz">“<span class="vt"></span>”</p>`;
+  h += `<div class="sug">`;
+  if (c.voz && c.voz.frase && c.voz.frase !== (c.texto || "").toUpperCase()) h += `<button class="btn chico vio" id="usar-frase">USAR “<span class="fr"></span>” COMO TEXTO</button>`;
+  if (p.partes.arranque != null && p.partes.arranque < 0.6 && c.iPico > 3) h += `<button class="btn chico" id="recortar">✂ EMPEZAR CERCA DE LO FUERTE</button>`;
+  h += `</div>`;
+  box.innerHTML = h;
+  const vt = box.querySelector(".vt"); if (vt) vt.textContent = c.voz.texto.slice(0, 400);
+  const uf = box.querySelector("#usar-frase");
+  if (uf) { uf.querySelector(".fr").textContent = c.voz.frase; uf.onclick = () => { c.texto = c.voz.frase; $("#p-texto").value = c.texto; c.blob = null; c.mini = null; dibujarPrev(); pintarLista(); pintarCtrl(); miniaturas(); }; }
+  const rc = box.querySelector("#recortar");
+  if (rc) rc.onclick = async () => { c.ini = Math.min(c.fin - 8, c.ini + c.iPico - 2); c.blob = null; c.mini = null; calcularTodos(); pintarCtrl(); pintarLista(); miniaturas(); await irA(vPrev, c.ini); dibujarPrev(); actualizarTiempo(); };
+}
+$("#orden").onclick = () => { S.orden = S.orden === "potencial" ? "tiempo" : "potencial"; $("#orden").textContent = "ORDEN: " + (S.orden === "potencial" ? "POTENCIAL" : "TIEMPO"); ordenar(); pintarLista(); pintarCtrl(); };
+$("#ia-on").onclick = () => { S.ia = !S.ia; const b = $("#ia-on"); b.classList.toggle("on", S.ia); b.textContent = S.ia ? "✓" : ""; b.setAttribute("aria-pressed", S.ia); };
+
+/* ============== audio de un clip a 16 kHz (para Whisper) ============== */
+async function pistaCache() {
+  if (!S.A) { const dv = await buscarMoov(S.file); const A = pistaAudio(dv); if (!A.n) await leerFragmentos(S.file, A, () => {}); S.A = A; }
+  return S.A;
+}
+function indiceEn(A, seg) { let lo = 0, hi = A.n; while (lo < hi) { const m = (lo + hi) >> 1; if (A.ts[m] / A.escala < seg) lo = m + 1; else hi = m; } return lo; }
+async function porMuestra(f, A, i, j, fn) {
+  let k = i;
+  while (k < j) {
+    const a = A.offs[k]; let m = k;
+    while (m < j && A.offs[m] + A.tams[m] - a <= (16 << 20) && A.offs[m] >= a) m++;
+    if (m === k) m = k + 1;
+    const buf = new Uint8Array(await f.slice(a, A.offs[m - 1] + A.tams[m - 1]).arrayBuffer());
+    for (let q = k; q < m; q++) fn(q, buf.subarray(A.offs[q] - a, A.offs[q] - a + A.tams[q]));
+    k = m;
+  }
+}
+async function audio16k(ini, fin) {
+  const A = await pistaCache(), f = S.file, SR = 16000, n16 = Math.ceil((fin - ini) * SR);
+  const i = indiceEn(A, Math.max(0, ini - 0.2)), j = Math.min(A.n, indiceEn(A, fin) + 1);
+  const sop = "AudioDecoder" in window ? await AudioDecoder.isConfigSupported(A.config).catch(() => ({ supported: false })) : { supported: false };
+  if (sop.supported) {
+    const trozos = []; let err = null;
+    const dec = new AudioDecoder({ output(ad) { try { const b = new Float32Array(ad.numberOfFrames); ad.copyTo(b, { planeIndex: 0, format: "f32-planar" }); trozos.push([ad.timestamp / 1e6, ad.sampleRate, b]); } finally { ad.close(); } }, error(e) { err = e; } });
+    dec.configure(A.config);
+    await porMuestra(f, A, i, j, (q, bytes) => dec.decode(new EncodedAudioChunk({ type: "key", timestamp: Math.round(A.ts[q] / A.escala * 1e6), data: bytes })));
+    await dec.flush(); dec.close(); if (err) throw err;
+    if (!trozos.length) return new Float32Array(n16);
+    const sr = trozos[0][1], total = Math.ceil((fin - ini) * sr), buf = new Float32Array(total);
+    for (const [t, , d] of trozos) { const o = Math.round((t - ini) * sr); for (let k = Math.max(0, -o); k < d.length && o + k < total; k++) buf[o + k] = d[k]; }
+    const oc = new OfflineAudioContext(1, n16, SR), ab = oc.createBuffer(1, total, sr); ab.copyToChannel(buf, 0);
+    const src = oc.createBufferSource(); src.buffer = ab; src.connect(oc.destination); src.start();
+    return (await oc.startRendering()).getChannelData(0);
+  }
+  if (!A.config.codec.startsWith("mp4a.40.")) throw new Error("este navegador no puede leer el audio");
+  const cab = cabeceraADTS(A.config.description), partes = []; let tam = 0;
+  await porMuestra(f, A, i, j, (q, bytes) => { const h = cab(bytes.length + 7); partes.push(h, bytes.slice()); tam += bytes.length + 7; });
+  const out = new Uint8Array(tam); let w = 0; for (const p of partes) { out.set(p, w); w += p.length; }
+  const oc = new OfflineAudioContext(1, 1, SR);
+  const ab = await new Promise((ok, mal) => { const pr = oc.decodeAudioData(out.buffer, ok, mal); if (pr && pr.catch) pr.catch(mal); });
+  const d = ab.getChannelData(0), salto = Math.max(0, Math.round((ini - A.ts[i] / A.escala) * SR));
+  const r = new Float32Array(n16); r.set(d.subarray(salto, salto + n16)); return r;
+}
+
+/* ===================== Whisper (IA de voz, gratis) ===================== */
+const TJS = "https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.3.1/dist/transformers.web.min.js";
+const CODIGO_WORKER = `
+import { pipeline, env } from "${TJS}";
+env.allowLocalModels = false;
+let asr = null, archivos = {};
+const progreso = d => {
+  if (d.status === "progress" && d.file) { archivos[d.file] = [d.loaded || 0, d.total || 0];
+    let a = 0, t = 0; for (const k in archivos) { a += archivos[k][0]; t += archivos[k][1]; }
+    postMessage({ tipo: "carga", p: t ? a / t : 0, mb: Math.round(t / 1e6) }); }
+};
+async function cargar() {
+  for (const modelo of ["onnx-community/whisper-base", "Xenova/whisper-base"]) {
+    if (self.navigator && navigator.gpu) {
+      try { asr = await pipeline("automatic-speech-recognition", modelo, { device: "webgpu", dtype: { encoder_model: "fp32", decoder_model_merged: "q4" }, progress_callback: progreso }); return "GPU"; } catch (e) {}
+    }
+    try { asr = await pipeline("automatic-speech-recognition", modelo, { dtype: "q8", progress_callback: progreso }); return "CPU"; } catch (e) { var ultimo = e; }
+  }
+  throw ultimo;
+}
+onmessage = async e => {
+  const { id, audio } = e.data;
+  try {
+    if (!asr) { const d = await cargar(); postMessage({ tipo: "listo", device: d }); }
+    const r = await asr(audio, { language: "spanish", task: "transcribe", chunk_length_s: 30, stride_length_s: 5, return_timestamps: true });
+    postMessage({ tipo: "texto", id, texto: r.text || "", chunks: r.chunks || [] });
+  } catch (err) { postMessage({ tipo: "error", id, msg: String((err && err.message) || err) }); }
+};`;
+let worker = null, iaCorriendo = false, iaCancel = false;
+const pendientes = new Map();
+function iaEstado(txt, p) {
+  const e = $("#ia-estado"); e.hidden = !txt; $("#ia-txt").textContent = txt || "";
+  const b = $("#barra-ia"); b.hidden = p == null; if (p != null) { b.querySelector("i").style.width = Math.round(p * 100) + "%"; b.querySelector("span").textContent = Math.round(p * 100) + "%"; }
+}
+function obtenerWorker() {
+  if (worker) return worker;
+  worker = new Worker(URL.createObjectURL(new Blob([CODIGO_WORKER], { type: "text/javascript" })), { type: "module" });
+  worker.onmessage = e => {
+    const m = e.data;
+    if (m.tipo === "carga") iaEstado(`🧠 Descargando la IA de voz${m.mb ? " (" + m.mb + " MB)" : ""}… solo la primera vez`, m.p);
+    else if (m.tipo === "listo") iaEstado(`🧠 IA lista (${m.device}). Escuchando clips…`, null);
+    else if (pendientes.has(m.id)) { pendientes.get(m.id)(m); pendientes.delete(m.id); }
+  };
+  worker.onerror = e => { for (const [, r] of pendientes) r({ tipo: "error", msg: e.message || "no se pudo cargar la IA" }); pendientes.clear(); worker = null; };
+  return worker;
+}
+let idIA = 0;
+const transcribir = audio => new Promise(r => { const id = ++idIA; pendientes.set(id, r); obtenerWorker().postMessage({ id, audio }, [audio.buffer]); });
+function pararIA() { iaCancel = true; }
+async function analizarVoz() {
+  if (iaCorriendo) { iaCancel = true; return; }
+  if (!S.clips.length) return;
+  iaCorriendo = true; iaCancel = false; $("#ia-btn").textContent = "✕ PARAR IA";
+  const lista = [...S.clips].filter(c => !c.voz).sort((a, b) => (b.pot?.total ?? 0) - (a.pot?.total ?? 0));
+  let hechos = 0, errores = 0;
+  try {
+    for (const c of lista) {
+      if (iaCancel || !S.clips.includes(c)) continue;
+      c.vozEstado = "escuchando"; pintarLista(); if (c === clipSel()) pintarCtrl();
+      iaEstado(`🧠 Escuchando clip ${hechos + errores + 1} de ${lista.length}…`, (hechos + errores) / lista.length);
+      try {
+        c.vozIni = c.ini;
+        const audio = await audio16k(c.ini, c.fin);
+        const r = await transcribir(audio);
+        if (r.tipo === "error") throw new Error(r.msg);
+        c.voz = analizarTexto(r.texto, r.chunks, c); c.vozEstado = "ok"; hechos++;
+      } catch (e) {
+        console.error(e); c.vozEstado = "error"; errores++;
+        if (errores >= 2 && !hechos) { iaEstado("No se pudo usar la IA de voz en este navegador: " + e.message, null); break; }
+      }
+      ordenar(); pintarLista(); pintarCtrl();
+    }
+    if (hechos) iaEstado(`✓ Voz analizada en ${hechos} clip${hechos > 1 ? "s" : ""}. El ranking ya la incluye.`, null);
+  } finally {
+    S.clips.forEach(c => { if (c.vozEstado === "escuchando") c.vozEstado = null; });
+    iaCorriendo = false; $("#ia-btn").textContent = "🧠 VOZ CON IA"; pintarLista(); pintarCtrl();
+  }
+}
+$("#ia-btn").onclick = () => analizarVoz();
 
 /* ============================== descargar ============================== */
 let actx, fuenteExp, destExp;
@@ -928,14 +1171,47 @@ function guardarArchivo(blob, nombre) {
   setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 4000);
 }
 const cola = []; let grabando = false;
+function prepararGrabadora() {
+  if (!actx) { actx = new AudioContext(); fuenteExp = actx.createMediaElementSource(vExp); destExp = actx.createMediaStreamDestination(); fuenteExp.connect(destExp); }
+  actx.resume();
+}
 function descargar(c) {
-  if (!("MediaRecorder" in window)) return avisar("Para descargar usa Chrome o Edge.");
   if (S.ocupado === "analisis") return avisar("Espera a que termine la búsqueda de momentos.");
   if (c.blob) return guardarArchivo(c.blob, c.archivo);
   if (cola.includes(c) || c.prog != null) return;
-  if (!actx) { actx = new AudioContext(); fuenteExp = actx.createMediaElementSource(vExp); destExp = actx.createMediaStreamDestination(); fuenteExp.connect(destExp); }
-  actx.resume();
-  c.prog = 0; cola.push(c); pintarLista(); pintarCtrl(); procesarCola();
+  if ("MediaRecorder" in window) prepararGrabadora();      // por si hace falta el plan B (necesita un clic del usuario)
+  c.prog = -1; cola.push(c); pintarLista(); pintarCtrl(); procesarCola();
+}
+const MB_URL = "https://cdn.jsdelivr.net/npm/mediabunny@1.61.6/dist/bundles/mediabunny.min.mjs";
+let MB = null, codecsMB = null;
+async function exportarRapido(c) {
+  if (!("VideoEncoder" in window) || !("VideoDecoder" in window) || !("OffscreenCanvas" in window)) return false;
+  try { MB = MB || await import(MB_URL); } catch (e) { console.warn(e); return false; }
+  if (!codecsMB) {
+    codecsMB = {
+      v: await MB.getFirstEncodableVideoCodec(["avc", "vp9", "av1", "vp8"], { width: W, height: H }).catch(() => null),
+      a: await MB.getFirstEncodableAudioCodec(["aac", "opus"]).catch(() => null)
+    };
+  }
+  if (!codecsMB.v) return false;
+  const input = new MB.Input({ source: new MB.BlobSource(S.file), formats: MB.ALL_FORMATS });
+  const pistaA = await input.getPrimaryAudioTrack().catch(() => null);
+  const audioCodec = pistaA && pistaA.codec === "aac" ? "aac" : codecsMB.a;     // si es AAC se copia sin recodificar
+  const output = new MB.Output({ format: new MB.Mp4OutputFormat({ fastStart: "in-memory" }), target: new MB.BufferTarget() });
+  const lienzo = new OffscreenCanvas(W, H), x = lienzo.getContext("2d"), texto = c.texto;
+  const conv = await MB.Conversion.init({
+    input, output, showWarnings: false, trim: { start: c.ini, end: c.fin },
+    video: { codec: codecsMB.v, frameRate: 30, quality: MB.QUALITY_HIGH, processedWidth: W, processedHeight: H,
+             process: sample => { componer(x, sample.toCanvasImageSource(), texto); return lienzo; } },
+    audio: audioCodec ? { codec: audioCodec, quality: MB.QUALITY_HIGH } : { discard: true }
+  });
+  const perdio = t => conv.discardedTracks.some(d => d.track && d.track.type === t);
+  if (!conv.isValid || perdio("video") || (pistaA && perdio("audio"))) { console.warn("plan B:", conv.discardedTracks); return false; }
+  let ult = 0;
+  conv.onProgress = p => { c.prog = p; const t = Date.now(); if (t - ult > 400) { ult = t; pintarLista(); } };
+  await conv.execute();
+  c.blob = new Blob([output.target.buffer], { type: "video/mp4" }); c.archivo = `${nombreClip(c)}.mp4`;
+  return true;
 }
 $("#bajar-todos").onclick = () => { S.clips.forEach(c => { if (!c.blob) descargar(c); }); avisar("Se descargarán uno por uno. Si el navegador pregunta, permite descargas múltiples.", true); };
 async function procesarCola() {
@@ -943,8 +1219,19 @@ async function procesarCola() {
   try {
     while (cola.length) {
       const c = cola.shift();
-      try { await grabar(c); guardarArchivo(c.blob, c.archivo); }
-      catch (e) { console.error(e); avisar("No se pudo grabar el clip: " + e.message); }
+      c.prog = 0; pintarLista();
+      try {
+        let ok = false;
+        try { ok = await exportarRapido(c); } catch (e) { console.warn("exportación rápida falló:", e); ok = false; }
+        if (!ok) {
+          if (!("MediaRecorder" in window)) throw new Error("tu navegador no puede crear videos");
+          prepararGrabadora();
+          $("#ayuda-bajar").innerHTML = "Tu navegador no puede procesar en segundo plano, así que el clip se graba en tiempo real. <b>No cambies de pestaña mientras se descarga.</b>";
+          await grabar(c);
+        }
+        guardarArchivo(c.blob, c.archivo); avisar(`✓ ${c.archivo} descargado`, true);
+      }
+      catch (e) { console.error(e); avisar("No se pudo crear el clip: " + e.message); }
       c.prog = null; pintarLista(); pintarCtrl();
     }
   } finally { grabando = false; S.ocupado = false; }
@@ -971,7 +1258,6 @@ async function grabar(c) {
   });
   rec.stop(); await fin; vt.stop();
   c.blob = new Blob(partes, { type: (t || "video/webm").split(";")[0] }); c.archivo = `${nombreClip(c)}.${ext}`;
-  avisar(`✓ ${c.archivo} descargado`, true);
 }
 
 /* ============================ marca de agua ============================ */
@@ -1050,7 +1336,7 @@ document.addEventListener("keydown", e => { if (e.key === "Escape") $("#m-cam").
 $("#usuario").value = CFG.usuario; $("#opac").value = Math.round(CFG.opacidad * 100); $("#tam").value = CFG.alto;
 pintarLogos(); pintarCam(); cambio(); dibujarPrev();
 document.fonts && document.fonts.ready.then(redibujarTodo);
-window.__ct = { S, CFG, puntaje, picos, ventana, sinSolapes, dbPorSegundo };
+window.__ct = { S, CFG, puntaje, picos, ventana, sinSolapes, dbPorSegundo, potencial, analizarTexto, audio16k, exportarRapido };
 </script>
 </body>
 </html>
